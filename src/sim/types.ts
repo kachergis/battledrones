@@ -866,4 +866,10 @@ export type Command =
    */
   | { type: "lift"; faction: Faction; unitIds: number[]; goliathId: number }
   /** `faction` gives up: the other side wins on this tick (a sound duel's Resign, SOUND-DUEL.md). */
-  | { type: "resign"; faction: Faction };
+  | { type: "resign"; faction: Faction }
+  /**
+   * `faction`'s income multiplier is now `incomeMult` (clamped to TUNE_INCOME):
+   * a Skillprint adjustment mid-match (src/skillprint/), in the record like any
+   * order so a replay pays out as the match did. Never sent in a duel.
+   */
+  | { type: "tune"; faction: Faction; incomeMult: number };

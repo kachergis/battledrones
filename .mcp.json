@@ -1,0 +1,20 @@
+{
+  "mcpServers": {
+    "skillprint-instrumentation": {
+      "command": "../mcp-tools/.venv/bin/python",
+      "args": ["../mcp-tools/instrumentation_mcp/server.py"]
+    },
+    "skillprint-scoring": {
+      "command": "../mcp-tools/.venv/bin/python",
+      "args": ["../mcp-tools/scoring_mcp/server.py"]
+    },
+    "skillprint-readiness": {
+      "command": "../mcp-tools/.venv/bin/python",
+      "args": ["../mcp-tools/readiness_mcp/server.py"]
+    },
+    "skillprint-identity": {
+      "command": "../mcp-tools/.venv/bin/python",
+      "args": ["../mcp-tools/identity_mcp/server.py"]
+    }
+  }
+}

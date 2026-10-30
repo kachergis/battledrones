@@ -49,11 +49,20 @@ export function recordEnd(tick: number, winner: Faction | "draw", resigned?: Fac
   return { tick, winner, reason: resigned ? "resign" : "hq" };
 }
 
+/** Each side's income multiplier, where it isn't 1. */
+function incomeOf(w: World): Partial<Record<Faction, number>> {
+  const income: Partial<Record<Faction, number>> = {};
+  for (const f of sidesOf(w)) if (w.factions[f].incomeMult !== 1) income[f] = w.factions[f].incomeMult;
+  return income;
+}
+
 export class MatchRecorder {
   private openers: Partial<Record<Faction, OpenerId>> = {};
   private readonly turns: [number, Faction, Command[]][] = [];
   private readonly hashes: [number, string][] = [];
   private readonly created = new Date().toISOString();
+  /** Each side's income multiplier as the match began: a `tune` command changes it later, in the turns. */
+  private income: Partial<Record<Faction, number>> | null = null;
 
   constructor(
     private readonly map: string,
@@ -69,6 +78,8 @@ export class MatchRecorder {
   /** Tick `w.tick - 1` was just stepped with `cmds`. */
   stepped(w: World, cmds: readonly Command[]): void {
     const t = w.tick - 1;
+    // (after the first tick: a tune on it is in the turns as well, and setting it twice is setting it once)
+    this.income ??= incomeOf(w);
     for (const side of sidesOf(w)) {
       const theirs = cmds.filter((c) => c.faction === side);
       if (theirs.length) this.turns.push([t, side, structuredClone(theirs)]);
@@ -78,8 +89,7 @@ export class MatchRecorder {
 
   /** The record of the match so far. */
   record(w: World): BattleRecord {
-    const income: Partial<Record<Faction, number>> = {};
-    for (const f of sidesOf(w)) if (w.factions[f].incomeMult !== 1) income[f] = w.factions[f].incomeMult;
+    const income = this.income ?? incomeOf(w);
     const end = w.winner ? recordEnd(w.tick, w.winner, w.resigned) : null;
     const o = this.opts;
     return {

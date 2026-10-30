@@ -76,6 +76,9 @@ export const BUILDING_KINDS = [
 
 export const POWER_KINDS = ["barrage", "emp", "droppod", "hammer"] as const satisfies readonly PowerKind[];
 
+/** Commands a duel never sends: a Skillprint `tune` is for a match against the AI (src/skillprint/). */
+type OFF_THE_WIRE = "tune";
+
 const TYPE_BITS = 5;
 const UNIT_BITS = 5;
 const BUILDING_BITS = 4;
@@ -87,7 +90,7 @@ const POWER_BITS = 2;
  * and bump CODEC_VERSION).
  */
 export const TABLES_COMPLETE: [
-  | Exclude<Command["type"], (typeof COMMAND_TYPES)[number]>
+  | Exclude<Command["type"], (typeof COMMAND_TYPES)[number] | OFF_THE_WIRE>
   | Exclude<UnitKind, (typeof UNIT_KINDS)[number]>
   | Exclude<BuildingKind, (typeof BUILDING_KINDS)[number]>
   | Exclude<PowerKind, (typeof POWER_KINDS)[number]>
@@ -450,6 +453,8 @@ export function encodeCommand(wr: BitWriter, c: Command, map: MapSize, prev: rea
       writeUnits(wr, c.unitIds, prev);
       writeId(wr, c.goliathId);
       return c.unitIds;
+    case "tune":
+      throw new CodecError("a duel never sends a tune");
     default: {
       const never: never = c;
       throw new CodecError(`unknown command ${(never as Command).type}`);
