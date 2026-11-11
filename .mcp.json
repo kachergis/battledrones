@@ -1,20 +1,24 @@
 {
   "mcpServers": {
     "skillprint-instrumentation": {
-      "command": "../mcp-tools/.venv/bin/python",
-      "args": ["../mcp-tools/instrumentation_mcp/server.py"]
+      "command": "../mcp-tools/.venv/bin/skillprint-instrumentation-mcp",
+      "args": []
     },
     "skillprint-scoring": {
-      "command": "../mcp-tools/.venv/bin/python",
-      "args": ["../mcp-tools/scoring_mcp/server.py"]
+      "command": "../mcp-tools/.venv/bin/skillprint-scoring-mcp",
+      "args": []
     },
     "skillprint-readiness": {
-      "command": "../mcp-tools/.venv/bin/python",
-      "args": ["../mcp-tools/readiness_mcp/server.py"]
+      "command": "../mcp-tools/.venv/bin/skillprint-readiness-mcp",
+      "args": []
     },
     "skillprint-identity": {
-      "command": "../mcp-tools/.venv/bin/python",
-      "args": ["../mcp-tools/identity_mcp/server.py"]
+      "command": "../mcp-tools/.venv/bin/skillprint-identity-mcp",
+      "args": []
+    },
+    "skillprint-game-publish": {
+      "command": "../mcp-tools/.venv/bin/skillprint-game-publish-mcp",
+      "args": []
     }
   }
 }

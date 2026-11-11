@@ -54,9 +54,12 @@ open it from `npm run dev` to watch the messages and send the 1–9 presets.
 The portal ships it as `static/iframeTest.html`.
 
 `.mcp.json` registers the Skillprint MCP servers from a sibling
-`mcp-tools` checkout. `tools/skillprint-spec.ts` is their input:
-`scaffold_instrumentation` turns it into the backend's GameSchema, and
-`scoring_mcp` checks the manifest and drafts the scorer's event guidance
-(the reviewed drafts are in [`guidance.ts`](src/skillprint/guidance.ts)).
-Their static check of the portal shim can't read a minified Vite bundle yet,
-so it reports the knobs as unhandled. The smoke test is the real check.
+`mcp-tools` checkout (its `.venv`, set up as its README says).
+`tools/skillprint-spec.ts` is their input: `scaffold_instrumentation` turns
+it into the backend's GameSchema, `scoring_mcp` checks the manifest and
+drafts the scorer's event guidance (the reviewed drafts are in
+[`guidance.ts`](src/skillprint/guidance.ts)), and `game_publish_mcp`
+creates the backend record that puts the game in the portal. Their static
+check of the portal shim can't read the knob names out of a minified Vite
+bundle, so it asks for them to be checked by hand. The smoke test is that
+check.
