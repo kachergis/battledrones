@@ -53,6 +53,9 @@ import { GroundGfx } from "./three/ground-gfx";
 import { Tweens } from "./three/tween";
 import { AIR_H, type P3, type View } from "./three/view";
 import { isMulti, sidesOf } from "../sim/sides";
+import { rulesOf } from "../sim/rules";
+import { skillprint, type MatchLink, type MatchPort } from "../skillprint/bridge";
+import type { MatchInfo } from "../skillprint/report";
 import { SIDE_NAME } from "./side-style";
 
 /** "Rush", "Rush and Boom", "Rush, Boom and Skyforce". */
@@ -172,6 +175,13 @@ export class GameScene {
   private ops: OpsPresenter | null = null;
   /** A match set up here (not fed): its battle record as it is played (Copy replay JSON). */
   private recorder: MatchRecorder | null = null;
+  /** Skillprint's report of this match (null: not in the portal, or not a match the player plays against the AI). */
+  private sp: MatchLink | null = null;
+  /** Skillprint `tune` commands for the next tick (src/skillprint/params.ts). */
+  private tunes: Command[] = [];
+  /** The player's opener (null: none was dealt yet, or the mode has no opener cards). */
+  private opener: OpenerId | null = null;
+  private wasPaused = false;
   private acc = 0;
   private prev = new Map<number, { x: number; y: number }>();
   readonly stage: Stage;
@@ -270,7 +280,8 @@ export class GameScene {
       });
     // spectating pits two Normal commanders against each other
     // mutators / the Daily Op decide which personalities can play (meta.ts)
-    const aiDiff = gameMode.spectator ? "normal" : gameMode.difficulty;
+    // (Skillprint's aiDifficulty, when it set one: src/skillprint/params.ts; the Daily Op's is everyone's)
+    const aiDiff = gameMode.spectator ? "normal" : (!gameMode.daily && skillprint?.tuning.aiDifficulty) || gameMode.difficulty;
     const multi = isMulti(this.world);
     if (multi) {
       // a four-player map: a commander for every side the player doesn't play (all four, watching)
@@ -306,6 +317,8 @@ export class GameScene {
         });
       }
     }
+    // Skillprint (src/skillprint/): a match the player plays against the AI, in the portal
+    if (skillprint && !feed && !gameMode.spectator) this.sp = skillprint.match(this.skillprintPort(), PLAYER, () => this.matchInfo());
     // quick-start openers: spectated AIs take theirs at once; the player picks first
     // (skirmish and the Daily Op only: Last Stand and Ops set up their own starts)
     const openers: Partial<Record<Faction, OpenerId>> = {};
@@ -703,6 +716,7 @@ export class GameScene {
       if (theirs) picks[f] = theirs;
     }
     const mine = applyOpenersCanonical(this.world, picks)[PLAYER]!;
+    this.opener = id;
     this.recorder?.setOpeners(picks);
     this.holdStart = false;
     // roll-out flourish on everything that just arrived
@@ -841,14 +855,20 @@ export class GameScene {
         this.snapshotPrev();
         // our orders (a spectator's: blue's commander; a duel's: drained by its feed) and the enemy commander's, stepped blue's first
         // (a four-player map: every side's in canonical order, each from its commander or the player)
-        const cmds = fed ?? (isMulti(this.world) ? this.multiTick() : this.duelTick());
+        let cmds = fed ?? (isMulti(this.world) ? this.multiTick() : this.duelTick());
+        if (!fed && this.tunes.length) cmds = cmds.concat(this.tunes.splice(0));
         step(this.world, cmds);
         if (!fed) this.recorder?.stepped(this.world, cmds);
+        this.sp?.stepped(cmds);
         this.simSeconds += 1 / TICK_RATE;
         this.afterTick();
         this.keepChronicle();
         this.feed?.afterTick(this.world, false);
       }
+    }
+    if (this.ctrl.paused !== this.wasPaused) {
+      this.wasPaused = this.ctrl.paused;
+      this.sp?.pause(this.wasPaused);
     }
     this.ctrl.prune();
     this.feed?.frame(delta);
@@ -881,6 +901,8 @@ export class GameScene {
       v.top.flush();
       this.stage.render();
       this.drawScreen();
+      // (now, while the 3D view's drawing buffer still holds this frame)
+      this.sp?.frame(performance.now(), this.stage.canvas, this.stage.screen.canvas);
     }
     this.hud.update(delta);
     if (this.ctrl.tip) {
@@ -907,7 +929,9 @@ export class GameScene {
       const run = this.survival && !gameMode.spectator && !this.world.ops ? finishRun(this.world, this.world.mapId, this.survival.difficulty) : null;
       this.chronicle.finish();
       // XP, medals, stars (spectators: no-op; a duel keeps its own record, src/versus/records.ts)
-      if (!this.interactive) settleCareer(this.world, PLAYER);
+      const settled = this.interactive ? null : settleCareer(this.world, PLAYER);
+      const w = this.world;
+      this.sp?.end(w.winner === "draw" ? "draw" : won ? "won" : w.resigned === PLAYER ? "resigned" : "lost", settled?.gained);
       this.playFinale(() => {
         // at the flash the score resolves into a fanfare / lament; the SFX jingle covers music-off
         // (Robot Love: a draw resolves on its own sweet sting; its chime has already rung for music-off)
@@ -1033,7 +1057,7 @@ export class GameScene {
       },
       onDone: () => {
         this.finale = null;
-        this.hud.showEnd(winner);
+        this.hud.showEnd(winner, this.sp ? { actions: this.sp.endActions() } : undefined);
       }
     });
     this.zoomBy(zoom / this.targetZoom);
@@ -1060,6 +1084,46 @@ export class GameScene {
     return composeTick(PLAYER, mine, theirs);
   }
 
+  /** Skillprint's handle on this match (src/skillprint/bridge.ts): its knobs go to the enemy commanders and, as `tune` orders, the sim. */
+  private skillprintPort(): MatchPort {
+    const scene = this;
+    return {
+      get world() {
+        return scene.world;
+      },
+      tuneAi: (t) => {
+        for (const [f, ai] of this.ais) {
+          if (f === PLAYER) continue;
+          ai.tuning = { ...ai.tuning, ...t };
+          // (the commander sets its side's income every tick; the tune puts the change in the battle record)
+          if (t.incomeMult !== undefined) this.tunes.push({ type: "tune", faction: f, incomeMult: t.incomeMult });
+        }
+      },
+      tunePlayerIncome: (m) => this.tunes.push({ type: "tune", faction: PLAYER, incomeMult: m }),
+      setPaused: (p) => {
+        if (p !== this.ctrl.paused && !this.holdStart && !this.ended) this.hud.togglePause();
+      },
+      speed: () => this.aware.value
+    };
+  }
+
+  /** What this match is, for Skillprint's GAME_START. */
+  private matchInfo(): MatchInfo {
+    const w = this.world;
+    const rivals = [...this.ais.entries()].filter(([f]) => f !== PLAYER).map(([, ai]) => ai);
+    return {
+      mode: gameMode.daily ? "daily" : w.ops ? "op" : w.survival ? "survival" : "skirmish",
+      map: w.mapId,
+      biome: w.biome,
+      difficulty: w.survival?.difficulty ?? rivals[0]?.difficulty ?? gameMode.difficulty,
+      aiStrategies: rivals.map((ai) => ai.strategy.name),
+      mutators: [...rulesOf(w).mutators],
+      side: PLAYER,
+      rivals: sidesOf(w).length - 1,
+      ...(this.opener ? { opener: this.opener } : {})
+    };
+  }
+
   /** A four-player map's tick: each side's orders, in canonical side order, from its commander or (ours) the player. */
   private multiTick(): Command[] {
     const cmds: Command[] = [];
@@ -1079,6 +1143,7 @@ export class GameScene {
   private onKnockedOut(): void {
     if (this.knockedOut || this.world.winner) return;
     this.knockedOut = true;
+    this.sp?.end("lost"); // (the player's battle is over: the rest is watching)
     this.gest.reset();
     this.boxRect = null;
     this.ctrl.clearSelection();

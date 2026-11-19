@@ -144,7 +144,17 @@ function applyCommand(w: World, c: Command, held?: HeldLiftOrders): void {
       }
       w.fx.push({ type: "resign", faction: c.faction });
       break;
+    case "tune":
+      w.factions[c.faction].incomeMult = tuneIncome(c.incomeMult);
+      break;
     default:
       applyEconomyCommand(w, c);
   }
+}
+
+/** The income multipliers a `tune` command can set (anything else is clamped into it). */
+export const TUNE_INCOME = { min: 0.25, max: 2 } as const;
+
+export function tuneIncome(m: number): number {
+  return Number.isFinite(m) ? Math.min(TUNE_INCOME.max, Math.max(TUNE_INCOME.min, m)) : 1;
 }

@@ -213,6 +213,14 @@ export const DIFFICULTY: Record<
   }
 };
 
+/** A commander's difficulty knobs, overridden one by one (unset: its difficulty's). */
+export interface AiTuning {
+  incomeMult?: number;
+  /** Seconds between decision passes. */
+  interval?: number;
+  assaultMult?: number;
+}
+
 export interface AiState {
   mode: AiMode;
   strategy: Strategy;
@@ -238,6 +246,8 @@ export interface AiState {
   extraTurrets: number;
   /** Extra production buildings wanted because scrap is piling up. */
   extraProduction: number;
+  /** Overrides of its difficulty's knobs, set mid-match by a Skillprint adjustment (src/skillprint/). */
+  tuning?: AiTuning;
   /** Depot build order entries we gave up on (no useful spot). */
   skippedDepots: number;
   /** Army value when the current wave launched (for retreat decisions). */
@@ -380,7 +390,7 @@ function rand(s: AiState): number {
  * player. Difficulty only changes its reaction speed and income.
  */
 export function tickAi(w: World, faction: Faction, s: AiState): Command[] {
-  const diff = DIFFICULTY[s.difficulty];
+  const diff = s.tuning ? { ...DIFFICULTY[s.difficulty], ...s.tuning } : DIFFICULTY[s.difficulty];
   w.factions[faction].incomeMult = diff.incomeMult;
   // no HQ, no commander — unless a Goliath fights on (a side is beaten only once its HQ and all
   // its Goliaths are gone: GOLIATH.md); Last Stand's waves are the director's alone (not even the dodge reflex)

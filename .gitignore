@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-portal/
 _site/
 docs/
 dev-dist/

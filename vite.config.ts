@@ -44,6 +44,13 @@ function showcaseBattles(): Plugin {
   };
 }
 
+/**
+ * The Skillprint portal's copy (tools/skillprint-portal.mjs): the game alone,
+ * in an iframe under the portal's own origin, so no service worker (its
+ * cache would outlive a portal update) and none of the reference pages.
+ */
+const portal = process.env.SKILLPRINT_PORTAL === "1";
+
 export default defineConfig({
   // Local builds are portable; Pages supplies an absolute base for each version.
   base: "./",
@@ -67,19 +74,22 @@ export default defineConfig({
     // the engine in its own chunk: game updates don't re-download three.js
     rollupOptions: {
       // the game, plus the standalone vehicles reference page, 3D models page, battle record viewer and radio probe
-      input: {
-        main: "index.html",
-        vehicles: "vehicles.html",
-        models: "models.html",
-        records: "record-viewer.html",
-        probe: "radio-probe.html"
-      },
+      input: portal
+        ? { main: "index.html" }
+        : {
+            main: "index.html",
+            vehicles: "vehicles.html",
+            models: "models.html",
+            records: "record-viewer.html",
+            probe: "radio-probe.html"
+          },
       output: { manualChunks: { three: ["three"] } }
     }
   },
   plugins: [
-    showcaseBattles(),
+    ...(portal ? [] : [showcaseBattles()]),
     VitePWA({
+      disable: portal,
       registerType: "autoUpdate",
       // precache the shell, icons and menu art; painted map terrain
       // (a few MB per map) and each biome's rock material are cached on

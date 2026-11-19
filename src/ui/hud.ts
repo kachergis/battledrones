@@ -1457,7 +1457,7 @@ export function createHud(api: HudApi): Hud {
     if (surv && !ops && winner !== "draw" && winner !== null) {
       surv.showEnd(endEl, winner, Math.round(api.matchSeconds()), rematch, () => fullscreen.reload());
       if (uncharted) endEl.querySelector(".panel > .time")?.insertAdjacentHTML("afterend", revealHtml(w.mapId));
-      for (const a of replay) {
+      for (const a of [...replay, ...(opts?.actions ?? [])]) {
         endEl.querySelector("#menu")?.insertAdjacentHTML("beforebegin", `<button id="${a.id}" class="cta ${a.cls}">${a.label}</button>`);
         endEl.querySelector(`#${a.id}`)?.addEventListener("click", a.on);
       }
