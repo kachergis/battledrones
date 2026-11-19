@@ -174,4 +174,21 @@ describe("the match reporter (report.ts)", () => {
     expect(events()).toEqual(["GAME_START", "GAME_PAUSE", "GAME_RESUME", "GAME_END"]);
     expect(states().at(-1)).toMatchObject({ isGameOver: true, outcome: "won", score: 120 });
   });
+
+  it("a snapshot for a frame: the state right now, posting nothing, only during the battle", () => {
+    const { w, r, out, states } = setup();
+    expect(r.snapshot(w)).toBeNull();
+    r.start(w, info);
+    for (let i = 0; i < STATE_EVERY * TICK_RATE + 7; i++) {
+      step(w, []);
+      r.tick(w);
+    }
+    const posted = out.length;
+    const snap = r.snapshot(w);
+    expect(out).toHaveLength(posted);
+    expect(snap).toMatchObject({ time: STATE_EVERY + 0.7, isGameOver: false, incomePerMin: states().at(-1)!.incomePerMin });
+    expect(r.snapshot(w)).toEqual(snap); // (taking one changes nothing)
+    r.end(w, "won");
+    expect(r.snapshot(w)).toBeNull();
+  });
 });

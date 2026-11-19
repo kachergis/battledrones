@@ -1,7 +1,8 @@
 // Headless check of the Skillprint link (src/skillprint/): the portal build
 // in the harness page (skillprint-harness.html, the portal's iframeTest.html)
 // as the portal runs it, in an iframe. Plays a skirmish and checks what
-// reaches the parent: GAME_START, the player's orders, gameStates and frames,
+// reaches the parent: GAME_START, the player's orders, gameStates and frames
+// (each with its state and input count),
 // ADJUST_GAME presets before and during the match (the enemy commander's
 // knobs, and a recorded tune whose battle record still replays exactly),
 // keys 1-9 forwarded to the tester, GAME_PAUSE / GAME_RESUME both ways, and
@@ -117,6 +118,10 @@ else ok(`gameState ${JSON.stringify(state)}`);
 const shots = await harness(() => window.harness.screenshots);
 if (shots < 1) fail("no frames reached the parent");
 else ok(`${shots} frames`);
+const frameState = (await harness(() => window.harness.frameStates)).at(-1);
+if (typeof frameState?.gameState?.armyValue !== "number" || typeof frameState.inputCount !== "number")
+  fail(`a frame's state: ${JSON.stringify(frameState)}`);
+else ok(`a frame carries its state (t=${frameState.gameState.time}) and ${frameState.inputCount} inputs`);
 
 // mid-match: preset 9 (Extreme), a key forwarded to the tester (4: Brisk), pause both ways
 await harness(() => window.harness.adjust("9"));
@@ -139,6 +144,10 @@ const mid = await game.evaluate(() => {
 if (mid.tuning.interval !== 1.5 || mid.income !== 1.15) fail(`key 4 (Brisk) after preset 9 didn't land: ${JSON.stringify(mid)}`);
 if (mid.tunes.length < 4) fail(`expected the tunes in the battle record: ${JSON.stringify(mid.tunes)}`);
 else ok(`mid-match presets: ${JSON.stringify(mid)}`);
+await page.waitForTimeout(2300); // (the next frame counts the click and the key)
+const inputs = (await harness(() => window.harness.frameStates)).reduce((n, f) => n + (f.inputCount ?? 0), 0);
+if (inputs < 2) fail(`the frames counted ${inputs} inputs, not the click and the key`);
+else ok(`the frames counted ${inputs} inputs`);
 
 await harness(() => document.getElementById("game").contentWindow.postMessage({ type: "GAME_PAUSE" }, "*"));
 await page.waitForTimeout(200);

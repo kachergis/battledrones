@@ -9,6 +9,7 @@
  *  - A `gameState` every STATE_EVERY seconds of battle: the economy, the two
  *    armies, the map and the player's pace. What fires many times a tick
  *    (shots, hits, harvester trips, salvage) is only ever counted into it.
+ *    `snapshot` is the same state at any moment, for a frame to carry.
  */
 import { BUILDINGS, TICK_RATE, UNITS } from "../sim/balance";
 import { isOut } from "../sim/combat";
@@ -102,6 +103,8 @@ export class MatchReporter {
   private orderTicks: number[] = [];
   private earned = 0;
   private lastStateTick = 0;
+  /** incomePerMin as of the last gameState (a frame between them carries it). */
+  private income = 0;
   /** Uplink and crate scrap the last state had counted (objectives.ts keeps the running total). */
   private objectiveSeen = 0;
   private paused = false;
@@ -236,10 +239,13 @@ export class MatchReporter {
     return w.objectives.uplinks.filter((l) => l.owner === this.side).length;
   }
 
+  /** The state right now, posting nothing: what a frame of the battle carries. Null outside the battle. */
+  snapshot(w: World): GameState | null {
+    return this.started && !this.ended ? this.measure(w) : null;
+  }
+
   /** Post the state now (and start the next interval). */
   private state(w: World, extra: Partial<GameState> = {}): GameState {
-    const me = this.side;
-    const f = w.factions[me];
     const secs = (w.tick - this.lastStateTick) / TICK_RATE;
     // income since the last state: harvests and salvage (their fx), plus Uplinks and crates (a running total)
     // (not the change in scrap: that is income less spending)
@@ -248,6 +254,15 @@ export class MatchReporter {
     this.objectiveSeen = objective;
     this.earned = 0;
     this.lastStateTick = w.tick;
+    this.income = secs > 0 ? Math.round((Math.max(0, earned) / secs) * 60) : 0;
+    const s = { ...this.measure(w), ...extra };
+    if (!extra.outcome) this.post({ type: "gameState", data: s });
+    return s;
+  }
+
+  private measure(w: World): GameState {
+    const me = this.side;
+    const f = w.factions[me];
     let armyValue = 0;
     let enemyArmyValue = 0;
     let units = 0;
@@ -267,10 +282,10 @@ export class MatchReporter {
     const now = w.tick;
     this.orderTicks = this.orderTicks.filter((t) => now - t < APM_WINDOW * TICK_RATE);
     const window = Math.min(APM_WINDOW, Math.max(1, now / TICK_RATE));
-    const s: GameState = {
+    return {
       time: Math.round((now / TICK_RATE) * 10) / 10,
       scrap: Math.floor(f.scrap),
-      incomePerMin: secs > 0 ? Math.round((Math.max(0, earned) / secs) * 60) : 0,
+      incomePerMin: this.income,
       armyValue,
       enemyArmyValue,
       units,
@@ -283,10 +298,7 @@ export class MatchReporter {
       lossValue: this.lossValue,
       apm: Math.round((this.orderTicks.length / window) * 60),
       speed: this.speed(),
-      isGameOver: false,
-      ...extra
+      isGameOver: false
     };
-    if (!extra.outcome) this.post({ type: "gameState", data: s });
-    return s;
   }
 }

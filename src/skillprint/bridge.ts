@@ -1,8 +1,8 @@
 /**
  * Battle Drones' link to Skillprint. In the Skillprint portal the page around
  * the game owns the session (it runs skillprint-js-sdk): the game posts it
- * what happens (report.ts), a frame of the battle every FRAME_SECONDS, and
- * GAME_COMPLETE from the end screen's Finish button, and takes ADJUST_GAME
+ * what happens (report.ts), a frame of the battle every FRAME_SECONDS (with
+ * the state at that moment and the inputs since the last), and GAME_COMPLETE from the end screen's Finish button, and takes ADJUST_GAME
  * (params.ts), GAME_PAUSE and GAME_RESUME. Anywhere else (no parent page)
  * it does nothing; `?skillprint=log` logs the messages instead, for testing.
  *
@@ -40,6 +40,8 @@ type Sink = (m: Message | ({ type: string } & Record<string, unknown>)) => void;
 export class SkillprintBridge {
   readonly tuning: Tuning;
   private link: MatchLink | null = null;
+  /** Clicks, taps and key presses since the last frame (the portal can't count them across origins). */
+  private inputs = 0;
 
   constructor(private readonly send: Sink, private readonly log: boolean) {
     this.tuning = loadTuning();
@@ -54,6 +56,11 @@ export class SkillprintBridge {
       ? (m) => window.parent.postMessage(m, "*")
       : (m) => console.debug("[skillprint]", m.type, "data" in m ? m.data : "");
     const bridge = new SkillprintBridge(send, log);
+    const input = (e: Event) => {
+      if (!(e instanceof KeyboardEvent && e.repeat)) bridge.inputs++;
+    };
+    window.addEventListener("pointerdown", input, true);
+    window.addEventListener("keydown", input, true);
     window.addEventListener("message", (e) => {
       // (only the page around the game adjusts it)
       if (embedded && e.source !== window.parent) return;
@@ -103,7 +110,12 @@ export class SkillprintBridge {
 
   /** A match the player is about to play against the AI: report it, and apply the knobs set so far. */
   match(port: MatchPort, side: Faction, info: () => MatchInfo): MatchLink {
-    const link = new MatchLink(this.send, port, side, info);
+    this.inputs = 0; // (the menu's clicks aren't the battle's)
+    const link = new MatchLink(this.send, port, side, info, () => {
+      const n = this.inputs;
+      this.inputs = 0;
+      return n;
+    });
     this.link = link;
     if (Object.keys(this.tuning.ai).length) port.tuneAi({ ...this.tuning.ai });
     if (this.tuning.playerIncomeMult !== undefined) port.tunePlayerIncome(this.tuning.playerIncomeMult);
@@ -139,6 +151,7 @@ function saveTuning(t: Tuning): void {
 /** One match's link to the portal: its reporter, and its frames. */
 export class MatchLink {
   private readonly reporter: MatchReporter;
+  /** The last gameState posted. */
   private last: GameState | null = null;
   private lastFrame = -Infinity;
   private composing = false;
@@ -149,7 +162,9 @@ export class MatchLink {
     private readonly send: Sink,
     readonly port: MatchPort,
     side: Faction,
-    private readonly info: () => MatchInfo
+    private readonly info: () => MatchInfo,
+    /** Inputs since the last call. */
+    private readonly takeInputs: () => number
   ) {
     this.reporter = new MatchReporter(
       (m) => {
@@ -198,7 +213,8 @@ export class MatchLink {
    */
   frame(now: number, view: HTMLCanvasElement, overlay: HTMLCanvasElement | null): void {
     if (this.reporter.isOver || this.composing || now - this.lastFrame < FRAME_SECONDS * 1000) return;
-    if (!this.last) return; // (the battle hasn't started: the opener cards are up)
+    const state = this.reporter.snapshot(this.port.world);
+    if (!state) return; // (the battle hasn't started: the opener cards are up)
     this.lastFrame = now;
     const scale = Math.min(1, FRAME_WIDTH / view.width);
     const w = Math.round(view.width * scale);
@@ -210,7 +226,8 @@ export class MatchLink {
     if (!ctx || w === 0 || h === 0) return;
     ctx.drawImage(view, 0, 0, w, h);
     if (overlay) ctx.drawImage(overlay, 0, 0, w, h); // health bars and labels
-    stamp(ctx, describe(this.last), w);
+    stamp(ctx, describe(state), w);
+    const inputCount = this.takeInputs();
     this.composing = true;
     // toBlob encodes off the main thread; toDataURL would stall the battle a frame or three
     work.toBlob(
@@ -222,7 +239,8 @@ export class MatchLink {
         const fr = new FileReader();
         fr.onload = () => {
           this.composing = false;
-          this.send({ type: "screenshot", dataUrl: fr.result, capturedAt: epochMs(now) });
+          // (the portal stores gameState with this frame, and counts the inputs toward it)
+          this.send({ type: "screenshot", dataUrl: fr.result, capturedAt: epochMs(now), gameState: state, inputCount });
         };
         fr.onerror = () => (this.composing = false);
         fr.readAsDataURL(blob);

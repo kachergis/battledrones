@@ -54,7 +54,7 @@
   };
   const game = document.getElementById("game");
   const log = document.getElementById("log");
-  const harness = (window.harness = { messages: [], screenshots: 0, completed: null, state: null });
+  const harness = (window.harness = { messages: [], screenshots: 0, frameStates: [], completed: null, state: null });
 
   function line(text, cls) {
     const d = document.createElement("div");
@@ -87,6 +87,7 @@
     const m = e.data || {};
     if (m.type === "screenshot") {
       harness.screenshots++;
+      harness.frameStates.push({ gameState: m.gameState, inputCount: m.inputCount });
       const img = document.getElementById("frame");
       img.src = m.dataUrl;
       img.hidden = false;

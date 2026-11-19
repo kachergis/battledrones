@@ -1,23 +1,25 @@
 /**
- * Copies Battle Drones into the Skillprint portal (skillprint/fe-refactor) as
- * public/games/live/Battle Drones/:
+ * Copies Battle Drones into Skillprint's games repo (skillprint/games) as
+ * live/Battle Drones/. Merging that to the games repo's main deploys it to
+ * games.skillprint.co, and the portal plays it once a backend Game record
+ * points at its page (mcp-tools' game_publish_mcp creates one):
  *
  *   static/                       the portal build (npm run build:portal: no service worker)
  *   static/iframeTest.html        skillprint-harness.html, the portal's side for testing
  *   cover.jpg                     the key art, for the tile and the backend thumbnail
  *   backend/game-scoring-config.json
- *                                 the parameter manifest the portal sends at session start
+ *                                 the parameter manifest the portal fetches beside the page
  *                                 (sdk_game_parameters), and the GameScoringConfig payload
- *                                 (parameter_definitions, adjustment instructions) for
- *                                 PATCH /scoring/api/games/battle-drones/scoring-config/
+ *                                 (parameter_definitions, adjustment instructions) the
+ *                                 backend is synced from
  *   README.md                     where it came from and how to rebuild it
  *
  * The knobs come from src/skillprint/params.ts and the instructions from
- * src/skillprint/guidance.ts, so the portal and the game can't drift.
- * Registering the game in the portal's code (localGames.ts, gameConfig.ts,
- * GameAdjustmentTester.tsx) is a one-off, done by hand.
+ * src/skillprint/guidance.ts, so the portal and the game can't drift. The
+ * portal's 1-9 adjustment tester (fe-refactor's GameAdjustmentTester.tsx)
+ * keeps its own copy of the presets in skillprint-harness.html.
  *
- * Usage: npm run skillprint:portal [-- ../fe-refactor]
+ * Usage: npm run skillprint:portal [-- ../games]
  */
 import { execFileSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -27,10 +29,11 @@ import { PARAMETERS } from "../src/skillprint/params";
 import { ADJUSTMENT_INSTRUCTIONS, SKILL_ADJUSTMENT_INSTRUCTIONS } from "../src/skillprint/guidance";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const portal = resolve(root, process.argv[2] ?? "../fe-refactor");
-if (!existsSync(join(portal, "lib/localGames.ts"))) throw new Error(`${portal} isn't the portal (skillprint/fe-refactor)`);
+const games = resolve(root, process.argv[2] ?? "../games");
+if (!existsSync(join(games, "live")) || !existsSync(join(games, "deploy.sh")))
+  throw new Error(`${games} isn't Skillprint's games repo (skillprint/games)`);
 const SLUG = "battle-drones";
-const dest = join(portal, "public/games/live/Battle Drones");
+const dest = join(games, "live/Battle Drones");
 const git = (...args: string[]) => execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
 const commit = git("rev-parse", "HEAD");
 const dirty = git("status", "--porcelain", "--", "src", "index.html", "public", "vite.config.ts", "skillprint-harness.html") !== "";
@@ -77,11 +80,16 @@ A mobile real-time strategy game: two armies of flying and ground drones
 battle for territory and resources. By Simon Willison and Claude
 ([simonw/battledrones](https://github.com/simonw/battledrones), Apache-2.0).
 
+Proposed Skillprint skills: **planning**, task-switching, attention,
+perceptual speed, spatial, action.
+
+Slug \`${SLUG}\` · folder \`live/Battle Drones/\` · entry \`static/index.html\`.
+
 **Don't edit these files here.** They're built from
 [kachergis/battledrones](https://github.com/kachergis/battledrones) at
 \`${commit}\`${dirty ? " (with uncommitted changes)" : ""}. Its \`src/skillprint/\`
 has the Skillprint link. To update the copy, run this from that checkout, with
-fe-refactor beside it:
+this repo beside it:
 
 \`\`\`bash
 npm run skillprint:portal
@@ -107,13 +115,17 @@ AI-vs-AI and replays post nothing.
   numbers stamped top left.
 - \`GAME_COMPLETE\` from the end screen's **📊 Finish** button.
 
+Each screenshot also carries the \`gameState\` at that moment and the
+\`inputCount\` (clicks, taps and key presses) since the last one.
+
 It takes \`ADJUST_GAME\` (the knobs in \`backend/game-scoring-config.json\`),
 \`GAME_PAUSE\` and \`GAME_RESUME\`, and forwards keys 1-9 to the adjustment
 tester (1-3 also select squads in the game). Knobs set mid-match go into the
 battle record, so "Copy replay JSON" still replays the match exactly.
 
 \`static/iframeTest.html\` plays the portal's part for testing: open it from
-the dev server at \`/games/live/Battle Drones/static/iframeTest.html\`.
+the games server (\`make\`) at
+<http://localhost:8888/live/Battle%20Drones/static/iframeTest.html>.
 `
 );
 
